@@ -1,0 +1,12 @@
+name: Keepalive
+on:
+  workflow_run:
+    workflows: ["run"] # 将 "CI" 替换为您的定时工作流程的名称
+    types: [completed]
+    branches: [main]
+jobs:
+  Keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger keepalive
+        run: echo "Preventing scheduled workflow from being disabled due to inactivity."

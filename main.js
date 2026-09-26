@@ -1,39 +1,117 @@
 const glados = async () => {
   const notice = []
+
   if (!process.env.GLADOS) return
-  for (const cookie of String(process.env.GLADOS).split('\n')) {
+
+  const origins = [
+    'https://glados.cloud',
+    'https://glados.network',
+    'https://glados.rocks',
+  ]
+
+  for (const rawCookie of String(process.env.GLADOS).split('\n')) {
+    const cookie = rawCookie.trim()
     if (!cookie) continue
-    try {
-      const domain = process.env.DOMAIN || 'glados.cloud'
-      const common = {
-        'cookie': cookie,
-        'referer': `https://${domain}/console/checkin`,
-        'user-agent': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)',
+
+    let success = false
+    let lastError = null
+
+    for (const origin of origins) {
+      try {
+        const common = {
+          'cookie': cookie,
+          'accept': 'application/json, text/plain, */*',
+          'origin': origin,
+          'referer': `${origin}/console/checkin`,
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+            'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+            'Chrome/120.0.0.0 Safari/537.36',
+        }
+
+        // 1. 先检查 Cookie 是否真的处于登录状态
+        const statusResponse = await fetch(
+          `${origin}/api/user/status`,
+          {
+            method: 'GET',
+            headers: common,
+          }
+        )
+
+        const status = await statusResponse.json()
+
+        if (
+          !statusResponse.ok ||
+          status?.code !== 0 ||
+          !status?.data
+        ) {
+          lastError = new Error(
+            `${new URL(origin).hostname} 登录状态无效: ` +
+            `${status?.message || `HTTP ${statusResponse.status}`}`
+          )
+          continue
+        }
+
+        // 2. 登录状态正常后再签到
+        const actionResponse = await fetch(
+          `${origin}/api/user/checkin`,
+          {
+            method: 'POST',
+            headers: {
+              ...common,
+              'content-type': 'application/json;charset=UTF-8',
+            },
+            body: JSON.stringify({
+              token: new URL(origin).hostname,
+            }),
+          }
+        )
+
+        const action = await actionResponse.json()
+        const message = String(action?.message || '')
+
+        // code=0: 签到成功
+        // code=1: 通常表示今天已经签到
+        const alreadyChecked =
+          action?.code === 1 ||
+          /please try tomorrow/i.test(message) ||
+          /checkin repeats/i.test(message) ||
+          /already check/i.test(message) ||
+          /已经签到|今日已签到|明天再试/.test(message)
+
+        if (
+          !actionResponse.ok ||
+          (action?.code !== 0 && !alreadyChecked)
+        ) {
+          throw new Error(
+            `${new URL(origin).hostname}: ` +
+            `${message || `HTTP ${actionResponse.status}`}`
+          )
+        }
+
+        notice.push(
+          'Checkin OK',
+          `${message}`,
+          `Left Days ${Number(status?.data?.leftDays)}`,
+          `Host ${new URL(origin).hostname}`
+        )
+
+        success = true
+        break
+      } catch (error) {
+        lastError = error
       }
-      const action = await fetch(`https://${domain}/api/user/checkin`, {
-        method: 'POST',
-        headers: { ...common, 'content-type': 'application/json' },
-        body: JSON.stringify({ token: domain }),
-      }).then((r) => r.json())
-      if (action?.code) throw new Error(action?.message)
-      const status = await fetch(`https://${domain}/api/user/status`, {
-        method: 'GET',
-        headers: { ...common },
-      }).then((r) => r.json())
-      if (status?.code) throw new Error(status?.message)
-      notice.push(
-        'Checkin OK',
-        `${action?.message}`,
-        `Left Days ${Number(status?.data?.leftDays)}`
-      )
-    } catch (error) {
+    }
+
+    if (!success) {
       notice.push(
         'Checkin Error',
-        `${error}`,
+        `${lastError || 'Unknown Error'}`,
         `<${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}>`
       )
     }
   }
+
   return notice
 }
 

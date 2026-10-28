@@ -19,14 +19,10 @@ const glados = async () => {
     for (const origin of origins) {
       try {
         const common = {
-          'cookie': cookie,
-          'accept': 'application/json, text/plain, */*',
-          'origin': origin,
-          'referer': `${origin}/console/checkin`,
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-            'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-            'Chrome/120.0.0.0 Safari/537.36',
+          'cookie': cookie.trim(),
+          'referer': 'https://glados.cloud/console/checkin',
+          'origin': 'https://glados.cloud',
+          'user-agent': process.env.GLADOS_USER_AGENT,
         }
 
         // 1. 先检查 Cookie 是否真的处于登录状态
